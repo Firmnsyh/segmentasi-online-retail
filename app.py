@@ -5,39 +5,47 @@ import numpy as np
 
 @st.cache_resource
 def load_model():
-    pkg = joblib.load("deployment_model/clustering_deployment.joblib")
+    # PERBAIKAN DI SINI: Hapus "deployment_model/" karena file ada di root repo
+    pkg = joblib.load("clustering_deployment.joblib") 
     return pkg["model"], pkg["scaler"], pkg["feature_columns"]
 
 model, scaler, feature_columns = load_model()
 
+# --- UI STREAMLIT ---
 st.title("Segmentasi Pelanggan Online Retail")
 st.write("Prediksi cluster pelanggan menggunakan K-Means berdasarkan RFM.")
 
-recency   = st.number_input("Recency (hari sejak transaksi terakhir)", min_value=0,   value=15)
-frequency = st.number_input("Frequency (jumlah transaksi)",            min_value=1,   value=8)
-monetary  = st.number_input("Monetary (total belanja, £)",             min_value=0.0, value=2500.00, step=10.0)
+col1, col2, col3 = st.columns(3)
+with col1:
+    recency = st.number_input("Recency (Hari)", min_value=0, value=30)
+with col2:
+    frequency = st.number_input("Frequency (Transaksi)", min_value=1, value=2)
+with col3:
+    monetary = st.number_input("Monetary (£)", min_value=0.0, value=500.0, step=10.0)
 
-if st.button("Prediksi Cluster"):
-    d = pd.DataFrame({"Recency":[recency], "Frequency":[frequency], "Monetary":[monetary]})
-    d["Frequency_log"] = np.log1p(d["Frequency"])      # sama persis pipeline training (Sel 8)
-    d["Monetary_log"]  = np.log1p(d["Monetary"])
-    cluster = int(model.predict(scaler.transform(d[feature_columns]))[0])
+if st.button("🚀 Prediksi Cluster"):
+    input_data = pd.DataFrame({
+        "Recency": [recency],
+        "Frequency": [frequency],
+        "Monetary": [monetary]
+    })
+    
+    # Transformasi Log (Sama seperti training)
+    input_data["Frequency_log"] = np.log1p(input_data["Frequency"])
+    input_data["Monetary_log"] = np.log1p(input_data["Monetary"])
+    
+    # Scaling & Predict
+    input_scaled = scaler.transform(input_data[feature_columns])
+    prediction = int(model.predict(input_scaled)[0])
+    
+    # Mapping Nama Cluster
+    if prediction == 0:
+        nama, warna, saran = ("Pelanggan Reguler (Core)", "blue", "Pertahankan hubungan, berikan rekomendasi produk silang (cross-selling).")
+    elif prediction == 1:
+        nama, warna, saran = ("Pelanggan Tidak Aktif (At-Risk)", "orange", "Kirimkan kampanye reaktivasi ('We miss you') atau diskon khusus.")
+    else:
+        nama, warna, saran = ("Pelanggan VIP (High Value)", "green", "Berikan layanan eksklusif, reward loyalitas, dan prioritas dukungan.")
 
-    meta = {
-        0: ("Pelanggan Reguler (Core)",        "blue",   "Pertahankan hubungan, berikan rekomendasi produk silang (cross-selling)."),
-        1: ("Pelanggan Tidak Aktif (At-Risk)", "orange", "Kirimkan kampanye reaktivasi ('We miss you') atau diskon khusus."),
-        2: ("Pelanggan VIP (High Value)",      "green",  "Berikan layanan eksklusif, reward loyalitas, dan prioritas dukungan."),
-    }
-    nama, warna, saran = meta[cluster]
-    st.success(f"Pelanggan ini masuk ke **Cluster {cluster}**")
+    st.success(f"Hasil: Pelanggan ini masuk ke **Cluster {prediction}**")
     st.markdown(f"### Segmentasi: :{warna}[{nama}]")
     st.info(f"💡 **Rekomendasi Bisnis:** {saran}")
-
-    with st.expander("Lihat Detail Perhitungan"):
-        st.markdown(
-            f"| Fitur | Nilai |\n|---|---|\n"
-            f"| Recency | {recency} |\n| Frequency | {frequency} |\n| Monetary | {monetary:,.2f} |\n"
-            f"| Frequency_log | {np.log1p(frequency):.4f} |\n| Monetary_log | {np.log1p(monetary):.4f} |"
-        )
-        st.write("Nilai setelah scaling (urutan fitur model): "
-                 + ", ".join(f"{v:.4f}" for v in scaler.transform(d[feature_columns])[0]))
